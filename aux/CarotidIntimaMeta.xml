@@ -1,0 +1,123 @@
+<org.obiba.magma.views.View>
+  <name>CarotidIntimaMeta</name>
+  <from class="org.obiba.magma.views.JoinTable">
+    <list>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>clsa-dcs.Participants</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>clsa-dcs-images.CarotidIntima</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>alder.Exam</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>alder.Interview</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>clsa-dcs.Weight</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>clsa-dcs.StandingHeight</reference>
+      </table>
+    </list>
+  </from>
+  <select class="org.obiba.magma.views.support.NoneClause"/>
+  <where class="org.obiba.magma.views.support.AllClause"/>
+  <variables class="org.obiba.magma.js.views.VariablesClause">
+    <variables class="linked-hash-set">
+      <variable name="Site" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="0">
+        <attributes>
+          <attribute name="script" valueType="text">$(&apos;Site&apos;)</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/alder/table/Interview/variable/Site</attribute>
+        </attributes>
+      </variable>
+      <variable name="VisitDate" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="0">
+        <attributes>
+          <attribute name="script" valueType="text">$(&apos;VisitDate&apos;)</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/alder/table/Interview/variable/VisitDate</attribute>
+        </attributes>
+      </variable>
+      <variable name="Barcode" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="3">
+        <attributes>
+          <attribute name="identifier" valueType="text">true</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs/table/Participants/variable/Admin.Participant.barcode</attribute>
+          <attribute name="script" valueType="text">$(&apos;Admin.Participant.barcode&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="Stage" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="0">
+        <attributes>
+          <attribute name="script" valueType="text">$(&apos;CarotidIntima.Stage&apos;)</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/alder/table/Exam/variable/CarotidIntima.Stage</attribute>
+        </attributes>
+      </variable>
+      <variable name="Interviewer" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="0">
+        <attributes>
+          <attribute name="script" valueType="text">$(&apos;CarotidIntima.Interviewer&apos;)</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/alder/table/Exam/variable/CarotidIntima.Interviewer</attribute>
+        </attributes>
+      </variable>
+      <variable name="DatetimeAcquired" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="0">
+        <attributes>
+          <attribute name="script" valueType="text">$(&apos;CarotidIntima.DatetimeAcquired&apos;)</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/alder/table/Exam/variable/CarotidIntima.DatetimeAcquired</attribute>
+        </attributes>
+      </variable>
+      <variable name="Laterality" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="10" repeatable="true" occurrenceGroup="Measure">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">SIDE</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs-images/table/CarotidIntima/variable/Measure.SIDE</attribute>
+          <attribute name="script" valueType="text">$(&apos;Measure.SIDE&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="Gender" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="5">
+        <attributes>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs/table/Participants/variable/Admin.Participant.gender</attribute>
+          <attribute name="script" valueType="text">$(&apos;Admin.Participant.gender&apos;)</attribute>
+        </attributes>
+        <categories>
+          <category name="FEMALE"/>
+          <category name="MALE"/>
+        </categories>
+      </variable>
+      <variable name="Age" valueType="integer" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="38">
+        <attributes>
+          <attribute name="label" valueType="text" locale="en">Age</attribute>
+          <attribute name="label" valueType="text" locale="fr">Age</attribute>
+          <attribute name="script" valueType="text">$(&apos;AGE&apos;)</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs/table/Participants/variable/AGE</attribute>
+        </attributes>
+      </variable>
+      <variable name="Weight" valueType="decimal" entityType="Participant" unit="kg" mimeType="" referencedEntityType="" index="11">
+        <attributes>
+          <attribute name="stage" valueType="text">Weight</attribute>
+          <attribute name="label" valueType="text" locale="en">Weight</attribute>
+          <attribute name="label" valueType="text" locale="fr">Weight</attribute>
+          <attribute name="source" valueType="text">
+        $(&apos;Weight:Measure.RES_WEIGHT_MEASURE&apos;).avg();
+        </attribute>
+          <attribute name="captureMethod" valueType="text">COMPUTED</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs/table/Weight/variable/RES_WEIGHT</attribute>
+          <attribute name="script" valueType="text">$(&apos;RES_WEIGHT&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="Height" valueType="decimal" entityType="Participant" unit="cm" mimeType="" referencedEntityType="" index="11">
+        <attributes>
+          <attribute name="stage" valueType="text">StandingHeight</attribute>
+          <attribute name="source" valueType="text">
+        $(&apos;StandingHeight:Measure.RES_HEIGHT_MEASURE&apos;).avg();
+        </attribute>
+          <attribute name="captureMethod" valueType="text">COMPUTED</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs/table/StandingHeight/variable/RES_HEIGHT</attribute>
+          <attribute name="script" valueType="text">$(&apos;RES_HEIGHT&apos;)</attribute>
+        </attributes>
+      </variable>
+    </variables>
+  </variables>
+  <created valueType="datetime">2015-04-21T09:47:49.092-0400</created>
+  <updated valueType="datetime">2015-05-05T11:55:09.763-0400</updated>
+</org.obiba.magma.views.View>

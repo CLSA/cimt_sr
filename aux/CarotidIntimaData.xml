@@ -1,0 +1,95 @@
+<org.obiba.magma.views.View>
+  <name>CarotidIntimaData</name>
+  <from class="org.obiba.magma.views.JoinTable">
+    <list>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>clsa-dcs-images.CarotidIntima</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>clsa-dcs.Participants</reference>
+      </table>
+    </list>
+  </from>
+  <select class="org.obiba.magma.views.support.NoneClause"/>
+  <where class="org.obiba.magma.views.support.AllClause"/>
+  <variables class="org.obiba.magma.js.views.VariablesClause">
+    <variables class="linked-hash-set">
+      <variable name="Image" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="14" repeatable="true" occurrenceGroup="Measure">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">STILL_IMAGE</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs-images/table/CarotidIntima/variable/Measure.STILL_IMAGE</attribute>
+          <attribute name="script" valueType="text">$(&apos;Measure.STILL_IMAGE&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="CINE_1" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="11" repeatable="true" occurrenceGroup="Measure">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">CINELOOP_1</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs-images/table/CarotidIntima/variable/Measure.CINELOOP_1</attribute>
+          <attribute name="script" valueType="text">$(&apos;Measure.CINELOOP_1&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="CINE_2" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="12" repeatable="true" occurrenceGroup="Measure">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">CINELOOP_2</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs-images/table/CarotidIntima/variable/Measure.CINELOOP_2</attribute>
+          <attribute name="script" valueType="text">$(&apos;Measure.CINELOOP_2&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="CINE_3" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="13" repeatable="true" occurrenceGroup="Measure">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">CINELOOP_3</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/clsa-dcs-images/table/CarotidIntima/variable/Measure.CINELOOP_3</attribute>
+          <attribute name="script" valueType="text">$(&apos;Measure.CINELOOP_3&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="StructuredReportLeft" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="15">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">SR</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/cIMT-qc/table/CorotidIntimaData/variable/StructuredReportLeft</attribute>
+          <attribute name="script" valueType="text">try {
+  $group(&apos;Measure.SIDE&apos;, &apos;Left&apos;, &apos;Measure.SR&apos;).asSequence().last();
+} catch (e) {
+  null;
+}</attribute>
+        </attributes>
+      </variable>
+      <variable name="StructuredReportRight" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="15">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">SR</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/cIMT-qc/table/CorotidIntimaData/variable/StructuredReportRight</attribute>
+          <attribute name="script" valueType="text">try {
+  $group(&apos;Measure.SIDE&apos;, &apos;Right&apos;, &apos;Measure.SR&apos;).asSequence().last();
+} catch (e) {
+  null;
+}</attribute>
+        </attributes>
+      </variable>
+    </variables>
+  </variables>
+  <created valueType="datetime">2016-08-09T09:47:57.810-0400</created>
+  <updated valueType="datetime">2016-08-09T09:47:57.810-0400</updated>
+</org.obiba.magma.views.View>

@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# path to OpalHttp executable
+OPAL=/path_to_opalhttp/OpalHttp
+
+# path to where the UID folders and files will go
+CWD=/path_to_data/data
+
+# path to Opal user password in text file
+PWF=/path_to_file/pwd_file
+
+# path to list of UID's
+UIDF=/path_to_uid_file/uid_file
+
+opalpwd=$(cat $PWF)
+opaluser=xxxx
+opalhost=xxxx
+opalport=xxxx
+
+OPAL="$OPAL $opaluser $opalpwd $opalhost $opalport"
+
+VAR1=StructuredReportLeft
+VAR2=StructuredReportRight
+
+VIEW=/datasource/cIMT-qc/table/CarotidIntimaData
+
+varlistDCS=(
+$VAR1
+$VAR2
+)
+
+old_IFS=$IFS
+IFS=$'\n'
+UIDlist=($(cat $UIDF))
+IFS=$old_IFS
+
+cd $CWD
+
+for uid in "${UIDlist[@]}"
+
+do
+  if ! [ -d $CWD/$uid ]; then
+    mkdir -p $CWD/$uid
+  else
+    find $CWD/$uid -type f -size 0 -exec rm {} \;
+  fi
+
+  for vid in "${varlistDCS[@]}"
+    do
+      if ! [ -s $CWD/$uid/$vid.0.dcm.gz ]; then
+
+        COMMAND="$OPAL $VIEW/valueSet/$uid/variable/$vid/value $CWD/$uid/$vid.dcm.gz"
+        $COMMAND
+
+        if [ "$?" -ne 0 ]; then
+          echo "error with " $uid " " $vid
+        else
+          gzip -f -d -q $CWD/$uid/$vid.*
+        fi
+      fi
+
+    done
+done

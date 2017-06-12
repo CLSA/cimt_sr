@@ -1,0 +1,26 @@
+This document outlines the process for obtaining
+carotid intima media thickness measurements (cIMT) from
+structured report (SR) files stored in DICOM format
+as part of the CLSA comprehensive cohort data stream.
+
+1) create a text file "uidlist.txt" containing participant UID's
+of the form A1234567, one row per UID unquoted: download
+the SAC Opal view cIMT-qc/CarotidIntimaMeta to csv and
+edit accordingly
+
+2) create a credentials file "pwdfile" containing a password
+for access to SAC Opal
+
+3) compile the command line OpalHttp utility for dowloading
+data from SAC Opal
+
+4) create a view in SAC Opal to the SR files with variables for 
+left and right sides SR binary files - see aux/CarotidIntimaData.xml
+
+5) configure and run the bash script "get_cIMT_SR" which will
+pull the SR files from SAC Opal and store them to disk on
+the host machine of the script
+
+6) build cimt_sr_pair_files from source and run
+with appropriate command line inputs: eg.
+~/files/builds/cimt/cimt_sr_pair_files --output <name of output file> <name of input data folder>
