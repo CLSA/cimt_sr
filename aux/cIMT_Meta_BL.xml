@@ -1,0 +1,71 @@
+<org.obiba.magma.views.View>
+  <name>cIMT_Meta_BL</name>
+  <from class="org.obiba.magma.views.JoinTable">
+    <list>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>CLSA-DCS.Participants</reference>
+      </table>
+      <table class="org.obiba.magma.support.ValueTableReference">
+        <reference>CLSA-DCS.ContraIndications</reference>
+      </table>
+    </list>
+  </from>
+  <select class="org.obiba.magma.views.support.NoneClause"/>
+  <where class="org.obiba.magma.views.support.AllClause"/>
+  <variables class="org.obiba.magma.js.views.VariablesClause">
+    <variables class="linked-hash-set">
+      <variable name="BARCODE" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="3">
+        <attributes>
+          <attribute name="identifier" valueType="text">true</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/ncc_dexa/table/cIMT_Meta_BL/variable/BARCODE</attribute>
+          <attribute name="script" valueType="text">var bc = $(&apos;Admin.Participant.barcode&apos;)
+if(bc.isNull().value()) {
+  bc=&apos;NA&apos;
+}
+bc</attribute>
+        </attributes>
+      </variable>
+      <variable name="BEGIN" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="3">
+        <attributes>
+          <attribute name="stage" valueType="text">ContraIndications</attribute>
+          <attribute name="questionnaire" valueType="text">ContraIndications</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/ncc_dexa/table/cIMT_Meta_BL/variable/BEGIN</attribute>
+          <attribute name="script" valueType="text">// Determine the earliest possible valid start time before the cIMT measurement could
+// occur.  The time when the interviewer transfers the cIMT data to Onyx can happen
+// after the end of the entire interview, therefore, the actual datetime of acquisition can
+// only be recovered from the dicom tags: StudyDate and StudyTime.
+var dt=newSequence([
+  $group(&apos;Admin.StageInstance.stage&apos;, &apos;StandingHeight&apos;, &apos;Admin.StageInstance.startTime&apos;).asSequence().first(),
+  $group(&apos;Admin.StageInstance.stage&apos;, &apos;Weight&apos;, &apos;Admin.StageInstance.startTime&apos;).asSequence().first(), 
+  $group(&apos;Admin.StageInstance.stage&apos;, &apos;BloodPressure&apos;, &apos;Admin.StageInstance.startTime&apos;).asSequence().first(),
+  ($(&apos;Admin.Participant.captureStartDate&apos;).isNull().value() ? now() : $(&apos;Admin.Participant.captureStartDate&apos;)),
+  ($(&apos;QuestionnaireRun.timeStart&apos;).isNull().value() ? now() : $(&apos;QuestionnaireRun.timeStart&apos;))],&apos;datetime&apos;)
+dt.sort()
+dt=dt.first()
+if(dt.isNull().value()) {
+  dt=&apos;NA&apos;  
+} else {
+  dt=dt.format(&apos;yyyyMMdd HH:mm:ss&apos;)
+}
+dt</attribute>
+          <attribute name="label" valueType="text" locale="en">Contraindication Questionnaire</attribute>
+          <attribute name="description" valueType="text" locale="en">$(&apos;ENMSG_LANGUAGE&apos;)</attribute>
+          <attribute name="label" valueType="text" locale="fr">Questionnaire sur les contre-indications</attribute>
+          <attribute name="description" valueType="text" locale="fr">$(&apos;FRMSG_LANGUAGE&apos;)</attribute>
+        </attributes>
+      </variable>
+      <variable name="SITE" valueType="text" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="18">
+        <attributes>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/ncc_dexa/table/cIMT_Meta_BL/variable/SITE</attribute>
+          <attribute name="script" valueType="text">var s=$(&apos;Admin.ApplicationConfiguration.siteName&apos;)
+if(s.isNull().value()) {
+  s=&apos;NA&apos;
+}
+s</attribute>
+        </attributes>
+      </variable>
+    </variables>
+  </variables>
+  <created valueType="datetime">2017-05-15T11:57:17.321-04</created>
+  <updated valueType="datetime">2017-05-26T10:15:56.460-04</updated>
+</org.obiba.magma.views.View>

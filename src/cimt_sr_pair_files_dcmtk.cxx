@@ -28,7 +28,7 @@ vector<string> extractCIMT( DSRDocumentTree& tree )
   vector<string> values;
   DSRDocumentTreeNode* node =
     OFstatic_cast( DSRDocumentTreeNode*, tree.getNode() );
-  if( node == NULL ) return values;
+  if( NULL == node ) return values;
   DSRContentItem& item = tree.getCurrentContentItem();
   if( !item.isValid() ) return values;
   if( node->getRelationshipType() == DSRTypes::RT_contains &&
@@ -220,10 +220,30 @@ int main(const int argc, const char** argv)
           throw runtime_error( stream.str() );
           }
 
+        DSRCodedEntryValue codedEV1( "G-C171","SRT","Laterality");
+        DSRCodedEntryValue codedEV2( "GEU-1005-26","99GEMS","IMT Posterior Average");
+        DSRCodedEntryValue codedEV3( "GEU-1005-27","99GEMS","IMT Posterior Max");
+        DSRCodedEntryValue codedEV4( "GEU-1005-28","99GEMS","IMT Posterior Min");
+        DSRCodedEntryValue codedEV5( "GEU-1005-29","99GEMS","IMT Posterior SD");
+        DSRCodedEntryValue codedEV6( "GEU-1005-30","99GEMS","IMT Posterior nMeas");
+        vector<DSRCodedEntryValue> required_codes;
+        required_codes.push_back(codedEV1);
+        required_codes.push_back(codedEV2);
+        required_codes.push_back(codedEV3);
+        required_codes.push_back(codedEV4);
+        required_codes.push_back(codedEV5);
+        required_codes.push_back(codedEV6);
 
+        vector<string> cIMTLabels;
+        cIMTLabels.push_back("IMT Posterior Average");
+        cIMTLabels.push_back("IMT Posterior Max");
+        cIMTLabels.push_back("IMT Posterior Min");
+        cIMTLabels.push_back("IMT Posterior SD");
+        cIMTLabels.push_back("IMT Posterior nMeas");
         string s_modality = "SR";
+        string s_left = "left";
+        cIMTMeasure m_empty;
         map< cIMTMeasureKey, cIMTMeasureVector > measure_map;
-        int max_values = 6;
         for( int i = 0; i < dcmFiles->GetNumberOfValues(); ++i )
           {
           string filename = dcmFiles->GetValue(i);
@@ -233,6 +253,12 @@ int main(const int argc, const char** argv)
                       << " : "  << filename
                       << endl;
             }
+          vector< vtksys::String > path =
+            vtksys::SystemTools::SplitString( filename.c_str(), '/', true );
+          string s_uid = path.at( path.size()-2 ).c_str();
+          string lower_file = vtksys::SystemTools::GetFilenameName(filename.c_str());
+          transform(lower_file.begin(), lower_file.end(), lower_file.begin(), ::tolower);
+          string s_expected_lat = string::npos != lower_file.find(s_left) ? "left" : "right";
 
           ifstream fileStream(filename.c_str(),
             ios::in|ios::binary|ios::ate);
@@ -250,30 +276,41 @@ int main(const int argc, const char** argv)
             readSuccess = true;
             }
 
-          if(!readSuccess) continue;
-          
+          if(!readSuccess)
+            {
+            if( verbose )
+              cout << s_uid << ": error failed to read file stream" << endl;
+            continue;
+            }
+
           DcmInputBufferStream bufferStream;
           offile_off_t length = fileSize;
 
           bufferStream.setBuffer((void*)memoryBuffer, length );
           bufferStream.setEos();
-          
+
           DcmFileFormat fileFormat;
           OFCondition status = fileFormat.read( bufferStream, EXS_LittleEndianExplicit );
 
-          if ( status.bad() ) continue;
+          if ( status.bad() )
+            {
+            if( verbose )
+              cout << s_uid << ": error failed to read dicom file" << endl;
+            continue;
+            }
 
           DSRDocument srDocument;
           status = srDocument.read( *fileFormat.getDataset() );
-          if ( status.bad() ) continue;
-
+          if ( status.bad() )
+            {
+            if( verbose )
+              cout << s_uid << ": error failed to read sr document" << endl;
+            continue;
+            }
 
           // is this an SR modality?
           OFString v;
           srDocument.getModality(v);
-
-          if( verbose && !v.empty() )
-            cout << "Modality: " << v.c_str() << endl;
 
           if( !v.empty() && s_modality == v.c_str() )
             {
@@ -283,24 +320,51 @@ int main(const int argc, const char** argv)
               cout << "SR file found: " << filename << endl;
               }
 
-            vector< vtksys::String > path =
-              vtksys::SystemTools::SplitString( filename.c_str(), '/', true );
-            string s_uid = path.at( path.size()-2 ).c_str();
+            if(!srDocument.isValid())
+              {
+              if( verbose )
+                cout << s_uid << ": error invalid sr document" << endl;
+              continue;
+              }
+            DSRDocumentTree& srTree = srDocument.getTree();
+            if(!srTree.isValid())
+              {
+              if( verbose )
+                cout << s_uid << ": error invalid sr document tree state" << endl;
+              continue;
+              }
+            size_t nodeId = 0;
+            bool missing_codes = false;
+            for(auto it = required_codes.begin(); it != required_codes.end(); it++)
+              {
+              if(0 == srTree.gotoNamedNode( *it ))
+                {
+                missing_codes = true;
+                break;
+                }
+              }
+            if(missing_codes)
+              {
+              if( verbose )
+                cout << s_uid << ": error invalid sr document tree missing codes" << endl;
+              continue;
+              }
+
             string s_lat;
-            string s_left = "left";
-            string lower_file = vtksys::SystemTools::GetFilenameName(filename.c_str());
-            transform(lower_file.begin(), lower_file.end(), lower_file.begin(), ::tolower);
-            string s_expected_lat = string::npos != lower_file.find(s_left) ? "left" : "right";
             string s_datetime;
             vector<cIMTMeasure> v_meas;
             cIMTMeasure m;
-            cIMTMeasure m_empty;
 
-            srDocument.getPatientID(v); 
+            srTree.gotoRoot();
+            srDocument.getPatientID(v);
             m.SetLabel("PatientID");
             if( !v.empty() )
               {
               m.SetValue(vtkVariant(v.c_str()));
+              }
+            else
+              {
+              m.SetValue(vtkVariant("NA"));
               }
             v_meas.push_back(m);
 
@@ -314,6 +378,7 @@ int main(const int argc, const char** argv)
               }
             else
               {
+              m.SetValue(vtkVariant("NA"));
               valid_key = false;
               }
             v_meas.push_back(m);
@@ -327,40 +392,73 @@ int main(const int argc, const char** argv)
               }
             else
               {
+              m.SetValue(vtkVariant("NA"));
               valid_key = false;
               }
             v_meas.push_back(m);
 
-            DSRDocumentTree& tree = srDocument.getTree();
-            DSRCodedEntryValue codedEV( "G-C171","SRT","Laterality");
-            tree.gotoNamedNode( codedEV );
-            DSRContentItem& item1 = tree.getCurrentContentItem();
-            m.SetLabel("Laterality");
-            if( !item1.isValid() )
-              {
-              cout << "Error: invalid item" << endl;
-              }
-            else
-              {
-              s_lat = item1.getCodeValue().getCodeMeaning().c_str();
-              transform(s_lat.begin(), s_lat.end(), s_lat.begin(), ::tolower);
-              m.SetValue(vtkVariant(s_lat.c_str()));
-              }
-            v_meas.push_back(m);
-            
             m.SetLabel("Expected Laterality");
             m.SetValue(vtkVariant(s_expected_lat.c_str()));
             v_meas.push_back(m);
 
-            // now get the measurements
-            DSRDocumentTree& srTree = srDocument.getTree();
+            bool done = false;
+            bool valid = false;
             srTree.gotoRoot();
+            srTree.gotoNamedNode( codedEV1 );
+            map<string,int> side_map;
+            do
+              {
+                DSRContentItem& item1 = srTree.getCurrentContentItem();
+                if(item1.isValid())
+                  {
+                  s_lat = item1.getCodeValue().getCodeMeaning().c_str();
+                  transform(s_lat.begin(), s_lat.end(), s_lat.begin(), ::tolower);
+                  if(!s_lat.empty()) side_map[s_lat] = 1;
+                  if(s_lat == s_expected_lat)
+                    {
+                    done = true;
+                    valid = true;
+                    if( verbose )
+                      cout << s_uid << ": found expected side " << s_lat << " = " << s_expected_lat << endl;
+                    }
+                  else
+                    {
+                    if( verbose )
+                      cout << s_uid << ": found unexpected side " << s_lat << " < > " << s_expected_lat << endl;
+                    nodeId = srTree.gotoNextNamedNode( codedEV1 );
+                    if(0 == nodeId)
+                      {
+                      if( verbose )
+                        cout << s_uid << ": returning to first node" << endl;
+                      done = true;
+                      if(!valid)
+                        {
+                        srTree.gotoNamedNode( codedEV1 );
+                        DSRContentItem& itemNext = srTree.getCurrentContentItem();
+                        s_lat = itemNext.getCodeValue().getCodeMeaning().c_str();
+                        transform(s_lat.begin(), s_lat.end(), s_lat.begin(), ::tolower);
+                        }
+                      }
+                    }
+                  }
+              }
+            while(!done);
+
+            // make sure that we have at least one set of IMT values
+
+            m.SetLabel("Laterality");
+            if( !valid )
+              {
+              if( verbose )
+                cout << s_uid << ": invalid laterality item " << s_lat << endl;
+              }
+            m.SetValue(vtkVariant(s_lat.c_str()));
+            v_meas.push_back(m);
 
             map<string,vector<pair<double,string>>> dataSets;
-            string s_zero = "0";
             if( srTree.isValid() )
               {
-              do 
+              do
                 {
                 vector<string> values = extractCIMT( srTree );
                 if(!values.empty())
@@ -371,49 +469,170 @@ int main(const int argc, const char** argv)
                   values.pop_back();
                   string name = values.back();
                   values.pop_back();
-                  if(s_zero != value)
-                    {
+                  // reject measurements that are not part of the expected set
+                  if (std::find(cIMTLabels.begin(), cIMTLabels.end(), name) != cIMTLabels.end())
                     dataSets[name].push_back(pair<double,string>(atof(value.c_str()),units));
-                    }
                   }
                 }
               while (srTree.iterate());
               }
-            bool has_multiple = false;
-            int multiple_size = 1;
-            cout << "number of cimt data values: " << dataSets.size() << endl;
+            int multiple_size = 0;
+            vector<cIMTMeasure> v_meas_pending;
+            map<int,int> item_lengths;
             for(auto it = dataSets.begin(); it != dataSets.end(); it++)
               {
               string name = it->first;
               vector<pair<double,string>> valueSet = it->second;
-              if(!has_multiple && 1<valueSet.size())
+              item_lengths[valueSet.size()] = 1;
+              if(valueSet.size() > multiple_size)
                 {
-                has_multiple = true;
                 multiple_size = valueSet.size();
                 }
               pair<double,string> data = valueSet.front();
               m = m_empty;
               m.SetLabel(name);
               m.SetValue(vtkVariant(data.first));
-              m.SetUnits(data.second);            
-              v_meas.push_back(m);
+              m.SetUnits(data.second);
+              v_meas_pending.push_back(m);
               }
+            if(1 != item_lengths.size())
+              {
+              if( verbose )
+                cout << s_uid << ": error inconsistency in number of data elements" << endl;
+              continue;
+              }
+
+            if(1 < multiple_size)
+              {
+              if( verbose )
+                cout << s_uid << ": processing for incorrect number of data " <<  multiple_size << endl;
+              // for each variable, extract the first complete non-zero set such that
+              // min < avg < max, SD > 0 and nMeas > 0
+              vector<double> ave;
+              vector<double> min;
+              vector<double> max;
+              vector<double> nmeas;
+              vector<double> std;
+              int idx = -1;
+              cIMTMeasure m_ave;
+              cIMTMeasure m_max;
+              cIMTMeasure m_min;
+              cIMTMeasure m_std;
+              cIMTMeasure m_nmeas;
+              for(auto it = dataSets.begin(); it != dataSets.end(); it++)
+                {
+                string name = it->first;
+                vector<pair<double,string>> valueSet = it->second;
+                for(auto vit = valueSet.begin(); vit!= valueSet.end(); vit++)
+                  {
+                  if(string::npos != name.find("Average"))
+                    {
+                    ave.push_back(vit->first);
+                    m_ave.SetLabel(name);
+                    m_ave.SetUnits(vit->second);
+                    }
+                  else if(string::npos != name.find("Min"))
+                    {
+                    min.push_back(vit->first);
+                    m_min.SetLabel(name);
+                    m_min.SetUnits(vit->second);
+                    }
+                  else if(string::npos != name.find("Max"))
+                    {
+                    max.push_back(vit->first);
+                    m_max.SetLabel(name);
+                    m_max.SetUnits(vit->second);
+                    }
+                  else if(string::npos != name.find("SD"))
+                    {
+                    std.push_back(vit->first);
+                    m_std.SetLabel(name);
+                    m_std.SetUnits(vit->second);
+                    }
+                  else if(string::npos != name.find("nMeas"))
+                    {
+                    nmeas.push_back(vit->first);
+                    m_nmeas.SetLabel(name);
+                    m_nmeas.SetUnits(vit->second);
+                    }
+                  }
+                }
+              int size = ave.size();
+              if(size==min.size() &&
+                 size==max.size() &&
+                 size==std.size() &&
+                 size==nmeas.size())
+                {
+                // select the set with the maximum nmeas
+                double max_nmeas = 0.;
+                for(int i=0; i<size; i++)
+                  {
+                  if(min[i] <= ave[i] && ave[i] <= max[i] && 0. < nmeas[i] && 0. < std[i])
+                    {
+                    if(nmeas[i]>max_nmeas)
+                      {
+                      max_nmeas = nmeas[i];
+                      idx = i;
+                      }
+                    // for first available data strategy break
+                    // break;
+                    }
+                  }
+                }
+              if(-1 != idx)
+                {
+                m_ave.SetValue(vtkVariant(ave[idx]));
+                m_min.SetValue(vtkVariant(min[idx]));
+                m_max.SetValue(vtkVariant(max[idx]));
+                m_std.SetValue(vtkVariant(std[idx]));
+                m_nmeas.SetValue(vtkVariant(nmeas[idx]));
+                v_meas.push_back(m_ave);
+                v_meas.push_back(m_max);
+                v_meas.push_back(m_min);
+                v_meas.push_back(m_std);
+                v_meas.push_back(m_nmeas);
+                if( verbose )
+                  cout << "["<<min[idx] <<" < " << ave[idx] << " < " << max[idx] << "] +- " << std[idx] << " : " << nmeas[idx] << endl;
+                }
+              else
+                {
+                if( verbose )
+                  cout << s_uid << ": no self-consistent set found in " << size << " sets" << endl;
+                continue;
+                }
+              }
+            else
+              {
+              for(auto it = v_meas_pending.begin(); it != v_meas_pending.end(); it++)
+                {
+                v_meas.push_back(*it);
+                }
+              }
+
             m = m_empty;
-            m.SetLabel("Multiple");
+            m.SetLabel("NMultiple");
             m.SetValue(vtkVariant(multiple_size));
+            v_meas.push_back(m);
+            m = m_empty;
+            m.SetLabel("NSides");
+            m.SetValue(vtkVariant(side_map.size()));
+            v_meas.push_back(m);
+            m = m_empty;
+            m.SetLabel("ExpectedFound");
+            m.SetValue(vtkVariant((valid ? 1 : 0)));
             v_meas.push_back(m);
 
             bool save = true;
             if( s_lat.empty() )
               {
               if( verbose )
-                cout << s_uid << " missing laterality" << endl;
+                cout << s_uid << ": error missing laterality" << endl;
               save = false;
               }
             if( v_meas.empty() )
               {
               if( verbose )
-                cout << s_uid << " missing all values" << endl;
+                cout << s_uid << ": error missing all values" << endl;
               save = false;
               }
 
