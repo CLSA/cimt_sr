@@ -1,6 +1,6 @@
 <?php
 
-require_once('/home/dean/files/sandbox/php/util.class.php');
+require_once('/home/dean/files/repository/php_util/util.class.php');
 util::initialize();
 
 // given an unmatching barcode, try to generate a valid substitution
