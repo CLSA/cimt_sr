@@ -1,0 +1,36 @@
+<org.obiba.magma.views.View>
+  <name>cIMT_SR_BL</name>
+  <from class="org.obiba.magma.security.SudoValueTableReference">
+    <reference>clsa-dcs-images.CarotidIntima</reference>
+  </from>
+  <select class="org.obiba.magma.views.support.NoneClause"/>
+  <where class="org.obiba.magma.views.support.AllClause"/>
+  <variables class="org.obiba.magma.js.views.VariablesClause">
+    <variables class="linked-hash-set">
+      <variable name="StructuredReportLeft" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="15">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">SR</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/ncc_images/table/cIMT_SR_BL/variable/StructuredReportLeft</attribute>
+          <attribute name="script" valueType="text">$group(&apos;Measure.SIDE&apos;,&apos;Left&apos;,&apos;Measure.SR&apos;).asSequence().last()</attribute>
+        </attributes>
+      </variable>
+      <variable name="StructuredReportRight" valueType="binary" entityType="Participant" unit="" mimeType="" referencedEntityType="" index="15">
+        <attributes>
+          <attribute name="stage" valueType="text">CarotidIntima</attribute>
+          <attribute name="captureMethod" valueType="text">AUTOMATIC</attribute>
+          <attribute name="isManualCaptureAllowed" valueType="text">false</attribute>
+          <attribute name="vendorName" valueType="text">SR</attribute>
+          <attribute name="occurrenceCount" valueType="text">Data[INTEGER:2]</attribute>
+          <attribute name="derivedFrom" namespace="opal" valueType="text">/datasource/ncc_images/table/cIMT_SR_BL/variable/StructuredReportRight</attribute>
+          <attribute name="script" valueType="text">$group(&apos;Measure.SIDE&apos;,&apos;Right&apos;,&apos;Measure.SR&apos;).asSequence().last()</attribute>
+        </attributes>
+      </variable>
+    </variables>
+  </variables>
+  <created valueType="datetime">2017-05-04T11:08:41.799-04</created>
+  <updated valueType="datetime">2017-05-04T11:11:56.455-04</updated>
+</org.obiba.magma.views.View>
