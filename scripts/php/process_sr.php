@@ -3,20 +3,46 @@
 require_once('/home/dean/files/repository/php_util/util.class.php');
 util::initialize();
 
+// count the number of sequential matches including possible single swaps
+// source and target must be the same size
+//
+function get_match_count($source,$target)
+{
+  $res = 0;
+  if(!is_array($source))
+    $source = str_split($source);
+  if(!is_array($target))
+    $target = str_split($target);
+  $n = count($source);
+  if($n == count($target))
+  {
+    for($i = 0; $i < $n; $i++)
+    {
+      $j = $i+1;
+      if($source[$i] == $target[$i] ||
+         ($j < $n  && $target[$i] == $source[$j] && $target[$j] == $source[$i]))
+      {
+        $res++;
+      }
+    }
+  }
+  return $res;
+}
+
 // given an unmatching barcode, try to generate a valid substitution
 //
 function repair_barcode_id($id, $opal_id, $opal_id_list)
 {
-  if($id==$opal_id) return $id;
+  if($id == $opal_id) return $id;
   $id_list = str_split($id);
   $id_length = count($id_list);
   $res = implode(array_intersect($opal_id_list,$id_list));
   $ndiff = count(array_diff($id_list, $opal_id_list));
-  if($res == $opal_id && $id_length != 8)
+  if($res == $opal_id && 8 != $id_length)
   {
     return $res;
   }
-  if($id_length == 7 && 0 == $ndiff)
+  if(7 == $id_length && 0 == $ndiff)
   {
     // is it a substring of the true id
     if(false !== strpos($opal_id, $res))
@@ -31,6 +57,29 @@ function repair_barcode_id($id, $opal_id, $opal_id_list)
         return $opal_id;
     }
   }
+
+  if(8 == $id_length)
+  {
+    $res = get_match_count($opal_id_list, $id_list);
+    if(6 < $res)
+    {
+      util::out('repairing by direct match count: ' . $id . ' <= ' . $opal_id);
+      return $opal_id;
+    }
+    // do second match attempt for cases when only 1 digit difference
+    $src = $opal_id_list;
+    $trg = $id_list;
+    sort($src,SORT_STRING);
+    sort($trg,SORT_STRING);
+    $res = get_match_count($src,$trg);
+    if(6 < $res)
+    {
+      util::out('repairing by sorted match count: ' . $id . ' <= ' . $opal_id);
+      return $opal_id;
+    }
+    util::out('failed to repair by match count: ' . $id . ' <= ' . $opal_id);
+  }
+
   return false;
 }
 
@@ -73,29 +122,6 @@ function read_csv($fileName)
   return $data;
 }
 
-function get_match_count($source,$target)
-{
-  $res = 0;
-  if(!is_array($source))
-    $source = str_split($source);
-  if(!is_array($target))
-    $target = str_split($target);
-  $n = count($source);
-  if($n==count($target))
-  {
-    for($i=0;$i<$n;$i++)
-    {
-      $j = $i+1;
-      if($source[$i]===$target[$i] ||
-         ($j < $n  && $target[$i]===$source[$j] && $target[$j]===$source[$i]))
-      {
-        $res++;
-      }
-    }
-  }
-  return $res;
-}
-
 // read the file
 if(3 != count($argv))
 {
@@ -119,20 +145,18 @@ foreach($indata as $data)
   $data['DATETIME']=
     DateTime::createFromFormat('Ymd H:i:s', $data['BEGIN']);
   $opal_data[$uid] = $data;
-  //$site_keys[strtoupper(substr($data['SITE'],0,3))]='';
 }
+util::out('number of opal data elements ' . count($opal_data));
 /*
 $site_keys=array_keys($site_keys);
 sort($site_keys);
 var_dump($site_keys);
 die();
 */
-// INPUT raw sr cIMT data obtained with cimt_sr_pair_files.cxx on dicom SR data files
-// data must contain UID, PATIENTID, STUDYDATE, STUDYTIME, SIDE, IMT_* measurements
+// INPUT raw sr cIMT data obtained with cimt_sr_pair_files_dcmtk.cxx on dicom SR data files
+// data must contain UID, PATIENTID, STUDYDATE, STUDYTIME, SIDE, LATERALITY, IMT_* measurements, VERIFYSIDE, MULTIPLE
 $measure_keys=array(
   'IMT_Posterior_Average','IMT_Posterior_Max','IMT_Posterior_Min','IMT_Posterior_SD','IMT_Posterior_nMeas');
-
-$do_cimt_reject = false;
 
 $infile = $argv[1];
 $outfile = $argv[2];
@@ -146,11 +170,12 @@ $num_invalid_cimt = 0;
 $num_missing_barcode = 0;
 $bogus_id = array();
 $repair_id = array();
+$uid_to_sr = array();
 foreach($indata as $row)
 {
   // group by UID, side, compute quality value based on codes, compute
   // length of code favoring longer (more verbose) codes
-  util::show_status($index++,$num_row);
+  //util::show_status($index++,$num_row);
   $uid = $row['UID'];
   $side = strtolower($row['SIDE']);
   $laterality = strtolower($row['LATERALITY']);
@@ -181,30 +206,59 @@ foreach($indata as $row)
   $site = $opal_data[$uid]['SITE'];
   if($site=='McMaster') $site='Hamilton';
 
-  // is this a bogus id?
-  $orig_id = $patid;
-  if(!array_key_exists($patid,$opal_barcode_to_uid))
+  // sanity check
+  if($site != $opal_data[$uid]['SITE'])
   {
-    // can we fix this id and make it valid?
-    $id = preg_replace('/[^0-9]/','',$patid);
-    $opal_id = $opal_uid_to_barcode[$uid];
-    if(''== $id || null == $id)
+    util::out('ERROR: ' . $uid . ' has incorrect site');
+    die();
+  }
+
+  $orig_id = $patid;
+  $opal_id = $opal_uid_to_barcode[$uid];
+  // is this a bogus id?
+  if($orig_id != $opal_id)
+  {
+    $opal_id_list = str_split($opal_id);
+    // if the id is not in use already
+    $do_repair = false;
+    if(!array_key_exists($patid,$opal_barcode_to_uid))
     {
-      $patid = $opal_id;
-      $repair_id[] = $res;
+      $do_repair = true;
     }
     else
     {
-      $opal_id_list = str_split($opal_id);
-      $res = repair_barcode_id($id, $opal_id, $opal_id_list);
-      if(false !== $res && array_key_exists($res,$opal_barcode_to_uid))
+      // it is in use, see if the id is already owned by the site
+      // get the mapped uid from the id
+      $mapped_uid = $opal_barcode_to_uid[$patid];
+      $mapped_site = $opal_data[$mapped_uid]['SITE'];
+      if($mapped_site != $site)
       {
-        $patid = $res;
+        util::out('correction can be made ' . $patid . ' ' . $site . ' < > ' . $mapped_site);
+        $do_repair = true;
+      }
+    }
+
+    if($do_repair)
+    {
+      // can we fix this id and make it valid?
+      $id = preg_replace('/[^0-9]/','',$patid);
+      if(''== $id || null == $id)
+      {
+        $patid = $opal_id;
         $repair_id[] = $res;
       }
       else
       {
-        $bogus_id[] = $patid;
+        $res = repair_barcode_id($id, $opal_id, $opal_id_list);
+        if(false !== $res && array_key_exists($res,$opal_barcode_to_uid))
+        {
+          $patid = $res;
+          $repair_id[] = $res;
+        }
+        else
+        {
+          $bogus_id[] = $patid;
+        }
       }
     }
   }
@@ -212,29 +266,29 @@ foreach($indata as $row)
   $sr_data=
     array(
       'UID'=>$uid,
-      'PATIENTID'=>$patid,
-      'STUDYDATE'=>$stdate,
-      'STUDYTIME'=>$sttime,
-      'ORIGINALID'=>$orig_id,
-      'BARCODE'=>$opal_uid_to_barcode[$uid],
-      'SITE'=>$site,
-      'SIDE'=>$side,
+      'PATIENTID'=>$patid,    // repaired or original id from dicom PatientId tag
+      'STUDYDATE'=>$stdate,   // dicom StudyDate tag
+      'STUDYTIME'=>$sttime,   // dicom StudyTime tag
+      'ORIGINALID'=>$orig_id, // original id from dicom PatientId tag
+      'BARCODE'=>$opal_id,    // expected id from Opal
+      'SITE'=>$site,          // expected site from Opal
+      'SIDE'=>$side,          // expected side from Opal
       'DATETIME'=>(DateTime::createFromFormat('Ymd Gis', $stdate . ' ' . $sttime)),
-      'VALID'=>($patid == $opal_uid_to_barcode[$uid] && $site == $opal_data[$uid]['SITE']),
-      'MATCH'=>($opal_uid_to_barcode[$uid]==$orig_id),
-      'MULTIPLE'=>$multiple,
-      'LATERALITY'=>$laterality,
-      'VERIFYSIDE'=>$verify_side
+      'VALID'=>($patid == $opal_id && $orig_id != $opal_id),
+      'MATCH'=>($orig_id == $opal_id),
+      'MULTIPLE'=>$multiple,     // sr file contained multiple sets of measurements
+      'LATERALITY'=>$laterality, // sr Laterality
+      'VERIFYSIDE'=>$verify_side // sr Laterality matches expected side
       );
 
+  // reject sr data that has no value
   $zero_count = 0;
   foreach($measure_keys as $key)
   {
-    if('' == $row[$key] || 0==$row[$key]) $zero_count++;
-    $sr_data[$key]=$row[$key];
+    if('' == $row[$key] || 0 == $row[$key]) $zero_count++;
+    $sr_data[$key] = $row[$key];
   }
-  if($do_cimt_reject &&
-     $zero_count > 3)
+  if(5 == $zero_count)
   {
     $num_invalid_cimt++;
     continue;
@@ -244,238 +298,454 @@ foreach($indata as $row)
   $site_key = strtoupper(substr($site,0,3));
   $dt_key = $stdate . $sttime . $site_key;
   $datetime_to_sr[$side][$dt_key][] = $sr_data;
-
   $num_data++;
 }
 
-$num_image_left = count($datetime_to_sr['left']);
-$num_image_right = count($datetime_to_sr['right']);
-$num_image_total = $num_image_left + $num_image_right;
-util::out('found ' . $num_data . ' out of ' . $num_row . ' rows');
-util::out('rejected datetimes ' . $num_reject_datetime . ' out of ' . $num_row );
-if($do_cimt_reject)
-{
-  util::out('rejected cimt data ' . $num_invalid_cimt . ' out of ' . $num_row );
-}
-util::out('number of missing barcodes ' . $num_missing_barcode . ' out of ' . $num_row );
-util::out('number of bogus barcodes ' . count(array_unique($bogus_id)));
-util::out('number of repaired barcodes ' . count(array_unique($repair_id)));
-util::out('found ' . $num_image_left . ' left images of ' . $num_image_total);
-util::out('found ' . $num_image_right . ' right images of ' . $num_image_total);
-util::out('estimated number of duplicate srs ' . ($num_data - $num_image_total));
-
-// number of images that were exported under more than one participant id
-$num_id_duplicate=0;
-// get a sample of valid uid barcode image for each site
-$valid_data=array();
-$num_valid_sr = 0;
-$num_valid_image = 0;
-$num_indeterminate = 0;
+// preprocess the keys ... make sure that left and right SR files are not
+// identical
+//
 $num_side_match=0;
+$keys_unset['left'] = array();
+$keys_unset['right'] = array();
 foreach($datetime_to_sr as $side=>$side_data)
 {
   foreach($side_data as $datetimesite_key=>$sr_data)
   {
-    // check if this data is duplicate of opposite side
+    // check if this data is a duplicate of the opposite side
+    // retain the data that has the expected side: Opal side matches sr Laterality dicom tag
+    //
     $other_side = $side == 'left' ? 'right' : 'left';
     if(array_key_exists($datetimesite_key,$datetime_to_sr[$other_side]))
     {
       $sr_other = $datetime_to_sr[$other_side][$datetimesite_key];
       $n_other = count($sr_other);
       $n_this = count($sr_data);
-      util::out('WARNING: sides match for key ' . $datetimesite_key . ' ' . 
-        $n_other . ' ' . $n_this);
-      if($n_other != $n_this || $n_this>1) die(); 
-      $num_side_match++;
-    }  
-
-    $patientid_list=array();
-    $uid_list=array();
-    $direct_match_idx = false;
-    foreach($sr_data as $idx_sr=>$data)
-    {
-      $patientid_list[$idx_sr]=$data['PATIENTID'];
-      $uid_list[$idx_sr]=$data['UID'];
-      if($data['MATCH'] && false == $direct_match_idx)
-        $direct_match_idx = $idx_sr;
-    }
-    $patientid_unique = array_unique($patientid_list);
-    $uid_unique = array_unique($uid_list);
-    if(1 < count($patientid_unique) || 1 < count($uid_unique))
-    {
-      $num_id_duplicate++;
-      $owner_idx = $direct_match_idx;
-
-      // can we assign the correct id?
-      // determine the true id uid owner of this image data
-      // by comparing the dicom datetime to the opal estimated datetime
-      // of the earliest event prior to acquisition
-      if(false===$owner_idx)
+      util::out('WARNING: sides match for key ' . $datetimesite_key);
+      if(1 != $n_other && 1 != $n_this)
       {
-        $valid_time=array();
-        foreach($patientid_list as $idx_sr => $patientid)
-        {
-          $data = $sr_data[$idx_sr];
-          $valid_patientid = $data['VALID']; // the patient id matches the barcode and site for this uid
-          $uid = $data['UID'];  // the uid
+        util::out('ERROR: failed on mismatch process checking 1');
+        die();
+      }
+      $num_side_match++;
+      $sr_other = current($sr_other);
+      $sr_this = current($sr_data);
+      // sanity check that the data are indeed the same
+      //
+      if($sr_this['IMT_Posterior_Average'] != $sr_other['IMT_Posterior_Average'] ||
+         $sr_this['VERIFYSIDE'] == $sr_other['VERIFYSIDE'])
+      {
+        util::out('ERROR: failed on mismatch process checking 2');
+        die();
+      }
+      // mark the incorrect side data for removal
+      if(0 == $sr_this['VERIFYSIDE'])
+        $keys_unset[$side][] = $datetimesite_key;
+      else
+        $keys_unset[$other_side][] = $datetimesite_key;
+    }
+  }
+}
 
-          // in order to compare to opal data, we need a valid uid / barcode pair
-          // we assume that among the data elements, there is one among them
-          // that the data belongs to in terms of time
-          if($valid_patientid)
-          {
-            $dt1 = $data['DATETIME']; // the image date
-            $dt2 = $opal_data[$uid]['DATETIME']; // the estimated time prior to the cIMT capture
-            // get the time difference between image datetime and opal datetime
-            $diff = strtotime($dt1->format('Y-m-d H:i:s')) - strtotime($dt2->format('Y-m-d H:i:s'));
-            // a positive difference implies the acquisition occurred after the preceding interview events
-            $valid_time[$idx_sr] = $diff;
-            // the last valid id just in case there is only 1 valid time
-            $owner_idx = $idx_sr;
-          }
-        }
+// remove the invalid sr data
+if(0 < $num_side_match)
+{
+  foreach($keys_unset as $side => $key_values)
+  {
+    $key_values = array_unique($key_values);
+    foreach($key_values as $key)
+    {
+      unset($datetime_to_sr[$side][$key]);
+      $num_data--;
+    }
+  }
+}
+$num_side_match/=2;
 
-        if(count($valid_time)>1 && asort($valid_time))
+// create mapping from uid and side to sr key
+// sr keys are unique per side per uid
+// since the Opal view is scripted to only release
+// one (the last exported) sr file per side
+// see cIMT_SR_BL.xml
+//
+foreach($datetime_to_sr as $side=>$side_data)
+{
+  foreach($side_data as $datetimesite_key=>$sr_data)
+  {
+    foreach($sr_data as $data)
+    {
+      $uid_to_sr[$data['UID']][$data['SIDE']][] = $datetimesite_key;
+    }
+  }
+}
+
+// count the number of uid's with single, bilateral or swapped sr data
+// swapping sides when required
+//
+$num_single_side = 0;
+$num_both_side = 0;
+$num_swap_side = 0;
+$num_sr['left'] = 0;
+$num_sr['right'] = 0;
+$num_dup_sr['left'] = 0;
+$num_dup_sr['right'] = 0;
+foreach($uid_to_sr as $uid => $side_data)
+{
+  if(1 == count($side_data))
+  {
+    $num_single_side++;
+  }
+  else
+  {
+    // check if the left and right are mismatched or shared among other uid's
+    $left_key = $side_data['left'];
+    $right_key = $side_data['right'];
+    // sanity check
+    if(1 != count($left_key) || 1 != count($right_key))
+    {
+      util::out('ERROR: failed on swap checking 1');
+      die();
+    }
+    $left_key = current($left_key);
+    $right_key = current($right_key);
+    if(array_key_exists($left_key, $datetime_to_sr['left']) &&
+       array_key_exists($right_key, $datetime_to_sr['right']))
+    {
+      $num_both_side++;
+      $left_sr_data = $datetime_to_sr['left'][$left_key];
+      $right_sr_data = $datetime_to_sr['right'][$right_key];
+      // get the data for the current uid
+      $uid_left = null;
+      $idx_left = -1;
+      foreach($left_sr_data as $idx => $data)
+      {
+        if($uid == $data['UID'])
         {
-          // if all times are negative then none of uid barcode pairs could rightfully claim ownership
-          // determine the minimum positive time difference
-          $owner_idx = false;
-          foreach($valid_time as $idx_sr => $t)
-          {
-            if($t<0) continue;
-            $owner_idx = $idx_sr;
-            break;
-          }
+          $uid_left[] = $data;
+          $idx_left = $idx;
         }
       }
-      if(false===$owner_idx)  // no valid uid id pair could be found in the data
+      $uid_right = null;
+      $idx_right = -1;
+      foreach($right_sr_data as $idx => $data)
       {
-        util::out('indeterminate non-unique ' . util::flatten($patientid_list) . ' ' . util::flatten($uid_list) );
-        // discard this data as orphaned
-        $num_indeterminate++;
+        if($uid == $data['UID'])
+        {
+          $idx_right = $idx;
+          $uid_right[] = $data;
+        }
+      }
+      if(!is_null($uid_left) && !is_null($uid_right) &&
+         1 == count($uid_left) && 1 == count($uid_right))
+      {
+        $left_sr = current($uid_left);
+        $right_sr = current($uid_right);
+        if(0 == $left_sr['VERIFYSIDE'] && 0 == $right_sr['VERIFYSIDE'])
+        {
+          $left_sr['VERIFYSIDE'] = 1;
+          $right_sr['VERIFYSIDE'] = 1;
+          $tmp = $left_sr;
+          $left_sr = $right_sr;
+          $right_sr = $tmp;
+          $datetime_to_sr['right'][$right_key][$idx_right] = $right_sr;
+          $datetime_to_sr['left'][$left_key][$idx_left] = $left_sr;
+          $num_swap_side++;
+        }
       }
       else
       {
-        $data = $sr_data[$owner_idx];
-        $uid = $data['UID'];
-        if($data['PATIENTID']!=$data['BARCODE'])
-        {
-          util::out($uid. ': ' . $data['PATIENTID'] . ' <= ' . $data['BARCODE']);
-          if($data['PATIENTID']!=$data['ORIGINALID'])
-            $data['ORIGINALID']=$data['PATIENTID'];
-          $data['PATIENTID'] = $data['BARCODE'];
-        }
-        $dt1 = $data['DATETIME']; // the image date
-        $dt2 = $opal_data[$uid]['DATETIME'];
-        util::out('assigning unique ownership ' .
-          $uid . ' (' . $data['BARCODE'] . ') ' .
-          $dt2->format('Y-m-d H:i:s') . ' > ' . $dt1->format('Y-m-d H:i:s') );
-
-        $valid_data[$side][$datetimesite_key][] = $data;
-        $num_valid_sr++;
-        $num_valid_image++;
+        // sanity check
+        util::out('ERROR: failed on swap checking 2');
+        die();
       }
     }
     else
     {
-      // all of this data uses the same barcode and uid
-      // how many are valid ?
-      $owner_idx = $direct_match_idx;
-      if(false===$owner_idx)
-      {
-        foreach($sr_data as $idx_sr=>$data)
-        {
-          if($data['VALID'])
-          {
-            $owner_idx = $idx_sr;
-            break;
-          }
-        }
-      }
+      // sanity check
+      util::out('ERROR: failed on swap checking 3');
+      die();
+    }
+  }
+  foreach($side_data as $side=>$data)
+    $num_sr[$side]++;
+}
 
-      if(false===$owner_idx)
+// reset the uid to side to sr key mapping
+if(0 < $num_swap_side)
+{
+  $uid_to_sr = array();
+  foreach($datetime_to_sr as $side=>$side_data)
+  {
+    foreach($side_data as $datetimesite_key=>$sr_data)
+    {
+      foreach($sr_data as $data)
       {
-        $max_match1 = -1;
-        $idx1 = 0;
-        $match1 = array();
-        $max_match2 = -1;
-        $idx2 = 0;
-        $match2 = array();
-        foreach($sr_data as $idx_sr=>$data)
-        {
-          $src = $data['BARCODE'];
-          $trg = $data['PATIENTID'];
-          $res = get_match_count($src,$trg);
-          $match1[$idx_sr]=$res;
-          if($res > $max_match1)
-          {
-            $max_match1 = $res;
-            $idx1 = $idx_sr;
-          }
-          $src = array_unique(str_split($src));
-          $trg = array_unique(str_split($trg));
-          sort($src,SORT_STRING);
-          sort($trg,SORT_STRING);
-          $res = get_match_count($src,$trg);
-          $match2[$idx_sr]=$res;
-          if($res == count($src) && $res > $max_match2)
-          {
-            $max_match2 = $res;
-            $idx2 = $idx_sr;
-          }
-        }
-        if(!array_key_exists($sr_data[$idx1]['PATIENTID'], $opal_barcode_to_uid))
-        {
-          if($max_match1 > 6)
-          {
-            $owner_idx = $idx1;
-            util::out('WARNING: accepting ' . count($sr_data) . ' imts for indeterminately owned image for ' .
-              $sr_data[$idx1]['UID'] . ' match ' . $match1[$idx1] . ' ' . $sr_data[$idx1]['PATIENTID'] . ' ' . $sr_data[$idx1]['BARCODE']);
-          }
-          else if($max_match2 > 0)
-          {
-            $owner_idx = $idx2;
-            util::out('WARNING: accepting ' . count($sr_data) . ' imts for indeterminately owned image for ' .
-              $sr_data[$idx2]['UID'] . ' match ' . $match2[$idx2] . ' ' . $sr_data[$idx2]['PATIENTID'] . ' ' . $sr_data[$idx2]['BARCODE']);
-          }
-        }  
-      }
-
-      if(false!==$owner_idx)
-      {
-        $owner_data = $sr_data[$owner_idx];
-        $num_valid_sr++;
-        $num_valid_image++;
-        if($owner_data['PATIENTID']!=$owner_data['BARCODE'])
-        {
-          util::out($uid. ': ' . $owner_data['PATIENTID'] . ' <= ' . $owner_data['BARCODE']);
-          if($owner_data['PATIENTID']!=$owner_data['ORIGINALID'])
-            $owner_data['ORIGINALID']=$owner_data['PATIENTID'];
-          $owner_data['PATIENTID'] = $owner_data['BARCODE'];
-        }
-        $valid_data[$side][$datetimesite_key][] = $owner_data;
-      }
-      else
-      {
-        foreach($sr_data as $data)
-        {
-          util::out('WARNING: rejecting sr data for indeterminately owned '. $side. ' image for ' .
-            util::flatten(array($data['UID'],$data['ORIGINALID'],$data['PATIENTID'],$data['BARCODE'])) . ' ' .
-            (array_key_exists($data['PATIENTID'],$opal_barcode_to_uid)?' patient id already in use ' : ' patient id not in use'));
-        }  
-        $num_indeterminate += count($sr_data);
+        $uid_to_sr[$data['UID']][$data['SIDE']][] = $datetimesite_key;
       }
     }
   }
 }
-util::out('number of duplicate image exports ' . $num_id_duplicate);
-util::out('number of valid srs ' . $num_valid_sr);
-util::out('number of valid images ' . $num_valid_image);
-util::out('number of indeterminate ' . $num_indeterminate);
-util::out('number of matched side images ' . $num_side_match);
 
-// once we have gone through the sides separately
-// look at UIDs with a left and a right
+$num_keys_left = count($datetime_to_sr['left']);
+$num_keys_right = count($datetime_to_sr['right']);
+$num_sr_total = $num_sr['left'] + $num_sr['right'];
+util::out('found ' . $num_data . ' out of ' . $num_row . ' rows');
+util::out('rejected datetimes ' . $num_reject_datetime . ' out of ' . $num_row );
+util::out('number of rejected zero-filled sr data ' . $num_invalid_cimt . ' out of ' . $num_row );
+util::out('number of missing sr patient ids ' . $num_missing_barcode . ' out of ' . $num_row );
+util::out('number of bogus sr patient ids  ' . count(array_unique($bogus_id)));
+util::out('number of repaired sr patient ids ' . count(array_unique($repair_id)));
+util::out('found ' . $num_sr['left'] . ' left srs of ' . $num_sr_total . ' among ' . $num_keys_left . ' keys');
+util::out('found ' . $num_sr['right'] . ' right srs of ' . $num_sr_total . ' among ' . $num_keys_right . ' keys');
+util::out('number of uids with single side ' . $num_single_side);
+util::out('number of uids with both sides ' . $num_both_side);
+util::out('number of uids with swapped sides ' . $num_swap_side);
+util::out('number of matched sides ' . $num_side_match);
+
+// sanity check
+foreach($uid_to_sr as $uid => $side_data)
+{
+  foreach($side_data as $side => $datetimesite_key)
+  {
+    if(1<count($datetimesite_key))
+    {
+      util::out('ERROR: ' . $uid . ' has more than one sr attributed to ' . $side . ' side');
+      die();
+    }
+    else
+      $uid_to_sr[$uid][$side] = current($datetimesite_key);
+  }
+}
+
+// go through the sr keys
+// for each sr key with multiple data
+// determine if there is a single direct match among the set of data
+// if there is, unset the incorrect elements
+util::out('final processing stage ... ');
+$valid_data = array();
+$num_valid_sr = 0;
+$keys_unset['left'] = array();
+$keys_unset['right'] = array();
+$keys_uid_unset = array();
+$num_orphan_sr['left'] = 0;
+$num_orphan_sr['right'] = 0;
+foreach($datetime_to_sr as $side=>$side_data)
+{
+  foreach($side_data as $datetimesite_key=>$sr_data)
+  {
+    $num_current = count($sr_data);
+    if(1<$num_current) $num_dup_sr[$side]++;
+    $match_idx = array();
+    $valid_idx = array();
+    foreach($sr_data as $idx=>$data)
+    {
+      if($data['MATCH']) $match_idx[] = $idx;
+      if($data['VALID']) $valid_idx[] = $idx;
+    }
+    // we have an exact match to Opal barcode and sr dicom patient id tag
+    $num_match = count($match_idx);
+    $num_valid = count($valid_idx);
+
+    $idx_valid = -1;
+    if(1 == $num_match)
+    {
+      // case 1: num_match == 1 (trivial case)
+      $idx_valid = current($match_idx);
+    }
+    else if(1 < $num_match)
+    {
+      // multiple participants share the same sr file
+      // sort by opal datetime difference to the file datetime
+      // select the one closest to the opal datetime
+      // a positive difference implies the acquisition occurred after the preceding interview events
+      //
+      $valid_time = array();
+      foreach($match_idx as $idx)
+      {
+        $uid = $sr_data[$idx]['UID'];
+        $opal_dt = $opal_data[$uid]['DATETIME'];
+        $sr_dt = $sr_data[$idx]['DATETIME'];
+        $valid_time[$idx] =
+          strtotime($sr_dt->format('Y-m-d H:i:s')) - strtotime($opal_dt->format('Y-m-d H:i:s'));
+      }
+      // get the minimum positive time difference in sec
+      $min_diff = 1000000000;
+      $idx_min = -1;
+      foreach($valid_time as $idx => $diff)
+      {
+        if($diff > 0 && $min_diff > $diff)
+        {
+          $min_diff = $diff;
+          $idx_min = $idx;
+        }
+      }
+      if(-1 != $idx_min)
+      {
+        $idx_valid = $idx_min;
+        util::out('WARNING: ' . $num_match .
+          ' direct matches, selecting based on time difference of ' . gmdate('H:i:s',$valid_time[$idx_min]));
+      }
+      else
+      {
+        util::out('WARNING: ' . $num_match .
+          ' direct matches, cannot determine valid time difference, rejecting');
+      }
+    }
+    else // no direct matches
+    {
+      // case 2: corrected patient id tag identifier
+      if(1 < $num_valid)
+      {
+        util::out('WARNING: ' . $num_valid . ' indirect matches');
+      }
+      else if(1 == $num_valid)
+      {
+        $idx_valid = current($valid_idx);
+      }
+      else
+      {
+        // no valid id can be attributed to this sr key data pair
+        if(1 == $num_current)
+        {
+          $data = current($sr_data);
+          $uid = $data['UID'];
+          $patid = $data['ORIGINALID'];
+          // is the original incorrect id a valid id, if it is, which uid and site owns it?
+          if(array_key_exists($patid,$opal_barcode_to_uid))
+          {
+            // which site does it belong to?
+            $mapped_uid = $opal_barcode_to_uid[$patid];
+            $mapped_site = $opal_data[$mapped_uid]['SITE'];
+            // is the original incorrect id belonging to this site?
+            if($mapped_site != $site)
+            {
+              // if this incorrect id is in use but belongs to another site
+              // then by virtue of the export process, it must belong to the current id
+              // we can correct the id in this case and use the data
+
+              //util::out('accepting ' . $uid . ' valid format: ' . $data['ORIGINALID'] . ' <= ' . $data['BARCODE'] );
+              $sr_data[0]['PATIENTID'] = $sr_data[0]['BARCODE'];
+              $idx_valid = 0;
+            }
+            else
+            {
+              // it could be that this participant received another participant's data
+              // based on the patient id in the sr file, get the uid, side and the key for their data
+              if(array_key_exists($mapped_uid,$uid_to_sr) &&
+                 array_key_exists($side,$uid_to_sr[$mapped_uid]))
+              {
+                $other_key = $uid_to_sr[$mapped_uid][$side];
+                util::out('----found other key for ' . $side . ' ' . $mapped_uid .
+                   ': ' . $other_key . ' <= ' . $datetimesite_key);
+
+                // get the data for that key
+                $other_data = $datetime_to_sr[$side][$other_key];
+                // has that key been validated yet?
+                if(array_key_exists($side,$valid_data) &&
+                   array_key_exists($other_key,$valid_data[$side]))
+                {
+                  util::out(' this data already accepted to ' . $mapped_uid);
+                  $keys_unset[$side][] = $datetimesite_key;
+                }
+                else
+                {
+                  util::out(' this data pending acceptance to ' . $mapped_uid);
+                }
+              }
+              else
+              {
+                // if we get here, then we have a patient id tag that doesnt belong to the
+                // attached Opal participant and we have no way to correct for it
+                // the Opal participant that it could belong to doesnt have data either
+                // but it is highly unlikely that their data was never exported to Onyx from the vivid-i source
+                util::out('------other uid has no data');
+                $num_orphan_sr[$side]++;
+              }
+            }
+          }
+          else
+          {
+            // this is an unknown id that couldnt be repaired
+            //
+            //util::out('accepting ' . $uid . ' invalid unknown: ' . $data['ORIGINALID'] . ' <= ' . $data['BARCODE'] );
+            $sr_data[0]['PATIENTID'] = $sr_data[0]['BARCODE'];
+            $idx_valid = 0;
+          }
+        }
+        else
+        {
+          // sanity check
+          util::out('ERROR: ' . $num_current . ' invalid data sets attached to sr key');
+          die();
+        }
+      }
+    }
+
+    if(-1 != $idx_valid)
+    {
+      $valid_data[$side][$datetimesite_key] = $sr_data[$idx_valid];
+      $keys_unset[$side][] = $datetimesite_key;
+      $keys_uid_unset[$side][] = $sr_data[$idx_valid]['UID'];
+    }
+    else
+    {
+      $num_orphan_sr[$side]++;
+    }
+  }
+}
+
+util::out('number of shared left srs: ' . $num_dup_sr['left']);
+util::out('number of shared right srs: ' . $num_dup_sr['right']);
+util::out('number of orphaned left srs: ' . $num_orphan_sr['left']);
+util::out('number of orphaned right srs: ' . $num_orphan_sr['right']);
+
+$num_chk=0;
+foreach($uid_to_sr as $uid=>$side_data)
+{
+  foreach($side_data as $side=>$key) $num_chk++;
+}
+util::out('uids attached to srs: '. $num_chk);
+
+if(0<count($valid_data))
+{
+  foreach($keys_unset as $side => $key_values)
+  {
+    $key_values = array_unique($key_values);
+    foreach($key_values as $key)
+    {
+      unset($datetime_to_sr[$side][$key]);
+      $num_valid_sr++;
+    }
+  }
+  foreach($keys_uid_unset as $side => $key_values)
+  {
+    foreach($key_values as $key)
+      unset($uid_to_sr[$key][$side]);
+  }
+  util::out('found ' . $num_valid_sr . ' valid srs in ' . $num_sr_total);
+}
+
+// how many UID's are still in play per side?
+$num_chk=0;
+foreach($uid_to_sr as $uid=>$side_data)
+{
+  foreach($side_data as $side=>$key) $num_chk++;
+}
+util::out('remaining uids attached to srs: '. $num_chk);
+
+// how many srs are still inplay per size
+$num_chk=0;
+$num_uid_attached = array();
+foreach($datetime_to_sr as $side=>$side_data)
+{
+  foreach($side_data as $datetimesite_key=>$sr_data)
+  {
+    $num_chk++;
+    foreach($sr_data as $data)
+      $num_uid_attached[] = $data['UID'];
+  }
+}
+$num_uid_attached = count(array_unique($num_uid_attached));
+util::out($num_chk . ' remaining srs attached to ' . $num_uid_attached . ' uids');
 
 $header = array(
       'UID',
@@ -503,11 +773,7 @@ foreach($valid_data as $side=>$side_data)
 {
   foreach($side_data as $datetimesite_key=>$data)
   {
-
-    if(count($data)>1)
-      foreach($data as $values)
-      util::out('tie required ' . util::flatten(array_values($values)));
-    $out_data = current($data);
+    $out_data = $data;
     $str = '"' . util::flatten(array(
       $out_data['UID'],
       $out_data['PATIENTID'],
@@ -527,7 +793,7 @@ foreach($valid_data as $side=>$side_data)
       '","') . '"' . PHP_EOL;
 
     fwrite($file,$str);
-    util::show_status($index++,$num_valid_image);
+    util::show_status($index++,$num_valid_sr);
   }
 }
 
