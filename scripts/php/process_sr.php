@@ -125,7 +125,7 @@ function read_csv($fileName)
 // read the file
 if(3 != count($argv))
 {
-  util::out('usage: process_sr input.csv output.csv');
+  util::out('usage: process_sr input_dcmtk.csv output.csv');
   exit;
 }
 
@@ -136,17 +136,34 @@ $opal_barcode_to_uid = array();
 $opal_uid_to_barcode = array();
 $opal_data = array();
 //$site_keys = array();
+$changed_sites = array();
+$sites = array();
 foreach($indata as $data)
 {
   $uid = $data['UID'];
   $opal_barcode_to_uid[$data['BARCODE']]=$uid;
   $opal_uid_to_barcode[$uid]=$data['BARCODE'];
-  if($data['SITE']=='McMaster')$data['SITE']='Hamilton';
+  $site = $data['SITE'];
+  $site = trim(str_replace('University of', '', $site));
+  $site = trim(str_replace('University', '', $site));
+  if($site=='McMaster') $site='Hamilton';
+  if($site != $data['SITE'])
+  {
+    $changed_sites[] = $site . ' <= ' . $data['SITE'];
+    $data['SITE'] = $site;
+  }
+  $sites[]=$data['SITE'];
+
   $data['DATETIME']=
     DateTime::createFromFormat('Ymd H:i:s', $data['BEGIN']);
   $opal_data[$uid] = $data;
 }
 util::out('number of opal data elements ' . count($opal_data));
+$changed_sites = array_unique($changed_sites);
+util::out('changed sites: ' . util::flatten($changed_sites));
+$sites = array_unique($sites);
+util::out('sites: ' . util::flatten($sites));
+
 /*
 $site_keys=array_keys($site_keys);
 sort($site_keys);
@@ -171,6 +188,7 @@ $num_missing_barcode = 0;
 $bogus_id = array();
 $repair_id = array();
 $uid_to_sr = array();
+$datetime_to_sr = array();
 foreach($indata as $row)
 {
   // group by UID, side, compute quality value based on codes, compute
@@ -204,14 +222,6 @@ foreach($indata as $row)
   }
   if(5 == strlen($sttime)) $sttime = '0' . $sttime;
   $site = $opal_data[$uid]['SITE'];
-  if($site=='McMaster') $site='Hamilton';
-
-  // sanity check
-  if($site != $opal_data[$uid]['SITE'])
-  {
-    util::out('ERROR: ' . $uid . ' has incorrect site');
-    die();
-  }
 
   $orig_id = $patid;
   $opal_id = $opal_uid_to_barcode[$uid];
@@ -281,7 +291,7 @@ foreach($indata as $row)
       'VERIFYSIDE'=>$verify_side // sr Laterality matches expected side
       );
 
-  // reject sr data that has no value
+  // sr data that has no values
   $zero_count = 0;
   foreach($measure_keys as $key)
   {
@@ -291,7 +301,6 @@ foreach($indata as $row)
   if(5 == $zero_count)
   {
     $num_invalid_cimt++;
-    continue;
   }
 
   // it is possible study datetime is not unique among sites, add a 3 char site key
@@ -367,16 +376,22 @@ $num_side_match/=2;
 // one (the last exported) sr file per side
 // see cIMT_SR_BL.xml
 //
+$num_duplicate_keys = 0;
 foreach($datetime_to_sr as $side=>$side_data)
 {
   foreach($side_data as $datetimesite_key=>$sr_data)
   {
+    $other_side = $side == 'left' ? 'right' : 'left';
+    if(array_key_exists($other_side,$datetime_to_sr) &&
+       array_key_exists($datetimesite_key,$datetime_to_sr[$other_side]))
+    $num_duplicate_keys++;
     foreach($sr_data as $data)
     {
       $uid_to_sr[$data['UID']][$data['SIDE']][] = $datetimesite_key;
     }
   }
 }
+util::out('number of duplicate side datetime site keys: ' . $num_duplicate_keys);
 
 // count the number of uid's with single, bilateral or swapped sr data
 // swapping sides when required
@@ -400,7 +415,7 @@ foreach($uid_to_sr as $uid => $side_data)
     $left_key = $side_data['left'];
     $right_key = $side_data['right'];
     // sanity check
-    if(1 != count($left_key) || 1 != count($right_key))
+    if(1 != count($left_key) && 1 != count($right_key))
     {
       util::out('ERROR: failed on swap checking 1');
       die();
@@ -441,13 +456,20 @@ foreach($uid_to_sr as $uid => $side_data)
         $right_sr = current($uid_right);
         if(0 == $left_sr['VERIFYSIDE'] && 0 == $right_sr['VERIFYSIDE'])
         {
+          // DO NOT ACTUALLY SWAP OR CORRECT THE DATA
+          // THE PROCESS_RATINGS script will attempt to establish the correct
+          // side based on datetime site key
+          /*
           $left_sr['VERIFYSIDE'] = 1;
+          $left_sr['SIDE'] = 'right' == $left_sr['SIDE'] ? 'left' : 'right';
           $right_sr['VERIFYSIDE'] = 1;
-          $tmp = $left_sr;
-          $left_sr = $right_sr;
-          $right_sr = $tmp;
-          $datetime_to_sr['right'][$right_key][$idx_right] = $right_sr;
-          $datetime_to_sr['left'][$left_key][$idx_left] = $left_sr;
+          $right_sr['SIDE'] = 'right' == $right_sr['SIDE'] ? 'left' : 'right';
+          //$tmp = $left_sr;
+          //$left_sr = $right_sr;
+          //$right_sr = $tmp;
+          $datetime_to_sr['right'][$right_key][$idx_right] = $left_sr;
+          $datetime_to_sr['left'][$left_key][$idx_left] = $right_sr;
+          */
           $num_swap_side++;
         }
       }
