@@ -1,23 +1,9 @@
 <?php
 
-require_once('/home/dean/files/repository/php_util/util.class.php');
-require_once('/home/dean/files/repository/php_util/database.class.php');
+$util_path = '/home/dean/files/repository/php_util/';
+require_once($util_path . 'util.class.php');
+require_once($util_path . 'database.class.php');
 util::initialize();
-
-function rsearch($folder, $pattern) {
-  $dir = new RecursiveDirectoryIterator($folder);
-  $ite = new RecursiveIteratorIterator($dir);
-  $reg = new RegexIterator($ite, $pattern, RegexIterator::GET_MATCH);
-  $reg->next();
-  $fileList = array();
-  while($reg->valid()) {
-    $item = current($reg->current());
-    if(file_exists($item))
-      $fileList[] = $item;
-    $reg->next();
-  }
-  return $fileList;
-}
 
 // assumes file sizes are equal
 function files_are_equal($a, $b)
